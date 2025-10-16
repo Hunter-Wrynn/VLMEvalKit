@@ -192,6 +192,7 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         post_process: bool = False,  # if True, will try to only extract stuff in the last \boxed{}.
         verbose: bool = False,
         use_audio_in_video: bool = False,
+        attn_implementation: str = "eager",  # 添加attn_implementation参数
         **kwargs,
     ):
         super().__init__(use_custom_prompt=use_custom_prompt)
@@ -234,7 +235,7 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
         elif listinstr(['2.5', '2_5', 'qwen25', 'mimo'], model_path.lower()):
             from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
             MODEL_CLS = Qwen2_5_VLForConditionalGeneration
-            self.processor = AutoProcessor.from_pretrained(model_path)
+            self.processor = AutoProcessor.from_pretrained(model_path, padding_side='left')
         else:
             from transformers import Qwen2VLForConditionalGeneration, Qwen2VLProcessor
             MODEL_CLS = Qwen2VLForConditionalGeneration
@@ -288,7 +289,7 @@ class Qwen2VLChat(Qwen2VLPromptMixin, BaseModel):
             self.device = 'cuda'
         else:
             self.model = MODEL_CLS.from_pretrained(
-                model_path, torch_dtype='auto', device_map="auto", attn_implementation='flash_attention_2'
+                model_path, torch_dtype='auto', device_map="auto", attn_implementation=attn_implementation
             )
             self.model.eval()
 

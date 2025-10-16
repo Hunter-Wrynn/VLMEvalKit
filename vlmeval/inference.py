@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+import time
 from vlmeval.config import supported_VLM
 from vlmeval.utils import track_progress_rich
 from vlmeval.smp import *
@@ -44,6 +45,7 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
         structs.append(struct)
 
     out_file = f'{work_dir}/{model_name}_{dataset_name}_supp.pkl'
+    out_time_file = f'{work_dir}/{model_name}_{dataset_name}_supp_TIME.pkl'
 
     # To reuse records in MMBench_V11
     if dataset_name in ['MMBench', 'MMBench_CN']:
@@ -59,10 +61,13 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
                 print(type(err), err)
 
     res = {}
+    time_res = {}
     if osp.exists(out_file):
         res = load(out_file)
         if ignore_failed:
             res = {k: v for k, v in res.items() if FAIL_MSG not in v}
+    if osp.exists(out_time_file):
+        time_res = load(out_time_file)
 
     structs = [s for i, s in zip(indices, structs) if i not in res]
     indices = [i for i in indices if i not in res]
@@ -71,21 +76,35 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
     structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=indices)
+        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, 
+                          save=out_file, keys=indices, save_time=out_time_file)
 
     res = load(out_file)
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
     if index_set is not None:
         res = {k: v for k, v in res.items() if k in index_set}
+        time_res = {k: v for k, v in time_res.items() if k in index_set}
     os.remove(out_file)
-    return res
+    if osp.exists(out_time_file):
+        os.remove(out_time_file)
+    return res, time_res
 
 
 def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, api_nproc=4, use_vllm=False):
     dataset_name = dataset.dataset_name
     prev_file = f'{work_dir}/{model_name}_{dataset_name}_PREV.pkl'
+    prev_time_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TIME.pkl'
+    
     res = load(prev_file) if osp.exists(prev_file) else {}
+    time_dict = load(prev_time_file) if osp.exists(prev_time_file) else {}
+    
     if osp.exists(out_file):
         res.update(load(out_file))
+    
+    # 加载对应的时间文件
+    out_time_file = out_file.replace('.pkl', '_TIME.pkl')
+    if osp.exists(out_time_file):
+        time_dict.update(load(out_time_file))
 
     rank, world_size = get_rank_and_world_size()
     sheet_indices = list(range(rank, len(dataset), world_size))
@@ -102,6 +121,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     if all_finished:
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
+        # 保存时间信息
+        time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
+        dump(time_dict_filtered, out_time_file)
         return model
 
     # Data need to be inferred
@@ -128,7 +150,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     is_api = getattr(model, 'is_api', False)
     if is_api:
         lt, indices = len(data), list(data['index'])
-        supp = infer_data_api(
+        supp, supp_time = infer_data_api(
             model=model,
             work_dir=work_dir,
             model_name=model_name,
@@ -138,8 +160,12 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         for idx in indices:
             assert idx in supp
         res.update(supp)
+        time_dict.update(supp_time)
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
+        # API 模型现在也可以记录时间了
+        time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
+        dump(time_dict_filtered, out_time_file)
         return model
     else:
         model.set_dump_image(dataset.dump_image)
@@ -154,6 +180,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         else:
             struct = dataset.build_prompt(data.iloc[i])
 
+        # 记录推理开始时间
+        start_time = time.time()
+        
         # If `SKIP_ERR` flag is set, the model will skip the generation if error is encountered
         if os.environ.get('SKIP_ERR', False) == '1':
             FAIL_MSG = 'Failed to obtain answer'
@@ -165,17 +194,27 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
                 response = f'{FAIL_MSG}: {type(err)} {str(err)}'
         else:
             response = model.generate(message=struct, dataset=dataset_name)
+        
+        # 记录推理结束时间
+        end_time = time.time()
+        inference_time = end_time - start_time
+        
         torch.cuda.empty_cache()
 
         if verbose:
-            print(response, flush=True)
+            print(f'{response} (Time: {inference_time:.2f}s)', flush=True)
 
         res[idx] = response
+        time_dict[idx] = inference_time
+        
         if (i + 1) % 10 == 0:
             dump(res, out_file)
+            dump(time_dict, out_time_file)
 
     res = {k: res[k] for k in data_indices}
+    time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
     dump(res, out_file)
+    dump(time_dict_filtered, out_time_file)
     return model
 
 
@@ -189,6 +228,8 @@ def infer_data_job(
     result_file = get_pred_file_path(work_dir, model_name, dataset_name, use_env_format=True)
 
     prev_file = f'{work_dir}/{model_name}_{dataset_name}_PREV.pkl'
+    prev_time_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TIME.pkl'
+    
     if osp.exists(result_file):
         if rank == 0:
             data = load(result_file)
@@ -197,6 +238,11 @@ def infer_data_job(
             if not ignore_failed:
                 results = {k: v for k, v in results.items() if FAIL_MSG not in str(v)}
             dump(results, prev_file)
+            
+            # 如果结果文件中有时间信息，也保存到 PREV_TIME
+            if 'inference_time' in data:
+                time_results = {k: v for k, v in zip(data['index'], data['inference_time'])}
+                dump(time_results, prev_time_file)
         if world_size > 1:
             dist.barrier()
 
@@ -211,8 +257,18 @@ def infer_data_job(
 
     if rank == 0:
         data_all = {}
+        time_all = {}
+        
+        # 合并所有进程的预测结果
         for i in range(world_size):
             data_all.update(load(tmpl.format(i)))
+        
+        # 合并所有进程的时间数据
+        time_tmpl = tmpl.replace('.pkl', '_TIME.pkl')
+        for i in range(world_size):
+            time_file = time_tmpl.format(i)
+            if osp.exists(time_file):
+                time_all.update(load(time_file))
 
         data = dataset.data
         for x in data['index']:
@@ -241,12 +297,21 @@ def infer_data_job(
             data['thinking'] = [x[1] for x in tups]
         else:
             data['prediction'] = [str(data_all[x]) for x in data['index']]
+        
+        # 添加推理时间列
+        data['inference_time'] = [time_all.get(x, 0.0) for x in data['index']]
+        
         if 'image' in data:
             data.pop('image')
 
         dump(data, result_file)
+        
+        # 清理临时文件
         for i in range(world_size):
             os.remove(tmpl.format(i))
+            time_file = time_tmpl.format(i)
+            if osp.exists(time_file):
+                os.remove(time_file)
     if world_size > 1:
         dist.barrier()
     return model

@@ -329,7 +329,8 @@ class Ovis2(BaseModel):
             self.model_path,
             torch_dtype=self.dtype,
             multimodal_max_length=32768,
-            trust_remote_code=True
+            trust_remote_code=True,
+            attn_implementation="eager"  # 禁用flash attention
         )
         self.size = self.SIZE_DICT[
             (self.model.config.llm_config.num_hidden_layers, self.model.config.llm_config.hidden_size)]

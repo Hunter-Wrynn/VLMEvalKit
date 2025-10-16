@@ -473,6 +473,7 @@ api_models = {
         api_base="http://0.0.0.0:23333/v1/chat/completions",
         temperature=0,
         retry=10,
+        timeout=180,  # Increased timeout for high-resolution images (e.g., OCRBench)
     ),
     "lmdeploy_internvl_78B_MPO": partial(
         LMDeployAPI,
@@ -969,19 +970,19 @@ internvl3 = {
 
 internvl3_5 = {
     "InternVL3_5-1B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-1B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-1B", version="V2.0"
     ),
     "InternVL3_5-2B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-2B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-2B", version="V2.0"
     ),
     "InternVL3_5-4B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-4B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-4B", version="V2.0"
     ),
     "InternVL3_5-8B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-8B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-8B", version="V2.0"
     ),
     "InternVL3_5-14B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-14B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-14B", version="V2.0"
     ),
     "InternVL3_5-GPT-OSS-20B-A4B-Preview": partial(
         InternVLChat, model_path="OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview", version="V2.0"
@@ -990,7 +991,7 @@ internvl3_5 = {
         InternVLChat, model_path="OpenGVLab/InternVL3_5-30B-A3B", version="V2.0"
     ),
     "InternVL3_5-38B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3_5-38B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3_5-38B", version="V2.0"
     ),
     "InternVL3_5-241B-A28B": partial(
         InternVLChat, model_path="OpenGVLab/InternVL3_5-241B-A28B", version="V2.0"
@@ -1145,7 +1146,7 @@ cogvlm_series = {
         CogVlm, model_path="THUDM/cogvlm2-llama3-chat-19B"
     ),
     "glm-4v-9b": partial(GLM4v, model_path="THUDM/glm-4v-9b"),
-    "GLM4_1VThinking-9b": partial(GLMThinking, model_path="THUDM/GLM-4.1V-9B-Thinking"),
+    "GLM4_1VThinking-9b": partial(GLMThinking, model_path="zai-org/GLM-4.1V-9B-Thinking"),
     "GLM4_5V": partial(GLMThinking, model_path="THUDM/GLM-4.5V"),
 }
 
@@ -1183,10 +1184,10 @@ ovis_series = {
     "Ovis1.6-Gemma2-27B": partial(
         Ovis1_6_Plus, model_path="AIDC-AI/Ovis1.6-Gemma2-27B"
     ),
-    "Ovis2-1B": partial(Ovis2, model_path="AIDC-AI/Ovis2-1B"),
-    "Ovis2-2B": partial(Ovis2, model_path="AIDC-AI/Ovis2-2B"),
-    "Ovis2-4B": partial(Ovis2, model_path="AIDC-AI/Ovis2-4B"),
-    "Ovis2-8B": partial(Ovis2, model_path="AIDC-AI/Ovis2-8B"),
+    "Ovis2-1B": partial(Ovis2, model_path="/data/xyc/cache/hub/Ovis2-1B"),
+    "Ovis2-2B": partial(Ovis2, model_path="/data/xyc/cache/hub/Ovis2-2B"),
+    "Ovis2-4B": partial(Ovis2, model_path="/data/xyc/cache/hub/Ovis2-4B"),
+    "Ovis2-8B": partial(Ovis2, model_path="/data/xyc/cache/hub/Ovis2-8B"),
     "Ovis2-16B": partial(Ovis2, model_path="AIDC-AI/Ovis2-16B"),
     "Ovis2-34B": partial(Ovis2, model_path="AIDC-AI/Ovis2-34B"),
     "Ovis-U1-3B": partial(OvisU1, model_path="AIDC-AI/Ovis-U1-3B"),
@@ -1342,10 +1343,11 @@ qwen2vl_series = {
     ),
     "Qwen2.5-VL-7B-Instruct": partial(
         Qwen2VLChat,
-        model_path="Qwen/Qwen2.5-VL-7B-Instruct",
+        model_path="/data/xyc/cache/hub/Qwen2.5-VL-7B-Instruct",  # 替换为你的本地路径
         min_pixels=1280 * 28 * 28,
         max_pixels=16384 * 28 * 28,
         use_custom_prompt=False,
+        attn_implementation="eager",  # 禁用FlashAttention2
     ),
     "Qwen2.5-VL-7B-Instruct-ForVideo": partial(
         Qwen2VLChat,

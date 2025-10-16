@@ -59,8 +59,8 @@ class GLMThinking(BaseModel):
         print(f"Loading processor from {model_path}")
         self.processor = AutoProcessor.from_pretrained(
             model_path,
-            use_fast=True,
-            local_files_only=True,
+            use_fast=True,  # 禁用fast processor
+            local_files_only=False,  # 允许从网络下载
             trust_remote_code=True
         )
         if self.use_vllm:
@@ -107,7 +107,7 @@ class GLMThinking(BaseModel):
                 self.model = Glm4vForConditionalGeneration.from_pretrained(
                     pretrained_model_name_or_path=model_path,
                     torch_dtype=torch.bfloat16,
-                    local_files_only=True,
+                    local_files_only=False,  # 允许从网络下载
                     trust_remote_code=True
                 ).to(self.device)
 

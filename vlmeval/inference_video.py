@@ -59,9 +59,12 @@ def infer_data_api(model, work_dir, model_name, dataset, samples_dict={}, api_np
 
     if dataset.nframe > 0:
         out_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.nframe}frame_{packstr}_supp.pkl'
+        out_time_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.nframe}frame_{packstr}_supp_TIME.pkl'
     else:
         out_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.fps}fps_{packstr}_supp.pkl'
+        out_time_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.fps}fps_{packstr}_supp_TIME.pkl'
     res = load(out_file) if osp.exists(out_file) else {}
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
 
     structs = [s for i, s in zip(indices, structs) if i not in res or res[i] == FAIL_MSG]
     structs = [struct for struct in structs if struct is not None]
@@ -71,14 +74,19 @@ def infer_data_api(model, work_dir, model_name, dataset, samples_dict={}, api_np
     structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=indices)
+        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, 
+                          save=out_file, keys=indices, save_time=out_time_file)
 
     res = load(out_file)
-    return res
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    return res, time_res
 
 
 def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, api_nproc=4, use_vllm=False):
     res = load(out_file) if osp.exists(out_file) else {}
+    out_time_file = out_file.replace('.pkl', '_TIME.pkl')
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    
     rank, world_size = get_rank_and_world_size()
     dataset_name = dataset.dataset_name
 
@@ -112,7 +120,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     is_api = getattr(model, 'is_api', False)
     if is_api:
         assert world_size == 1
-        supp = infer_data_api(
+        supp, supp_time = infer_data_api(
             model=model,
             work_dir=work_dir,
             model_name=model_name,
@@ -122,7 +130,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         for k in sample_indices_subrem:
             assert k in supp
         res.update(supp)
+        time_res.update(supp_time)
         dump(res, out_file)
+        dump(time_res, out_time_file)
         return model
 
     assert not getattr(dataset, 'pack', False), 'Current model not supported pack mode!'

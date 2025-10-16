@@ -53,11 +53,16 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
     structs = [dataset.build_prompt(data.iloc[i]) for i in range(lt)]
 
     out_file = f'{work_dir}/{model_name}_{dataset_name}_supp.pkl'
+    out_time_file = f'{work_dir}/{model_name}_{dataset_name}_supp_TIME.pkl'
+    
     res = {}
+    time_res = {}
     if osp.exists(out_file):
         res = load(out_file)
         if ignore_failed:
             res = {k: v for k, v in res.items() if FAIL_MSG not in v}
+    if osp.exists(out_time_file):
+        time_res = load(out_time_file)
 
     structs = [s for i, s in zip(indices, structs) if i not in res]
     indices = [i for i in indices if i not in res]
@@ -65,13 +70,18 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
     structs = [dict(model=model, messages=struct, dataset_name=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(chat_mt, structs, nproc=api_nproc, chunksize=api_nproc, save=out_file, keys=indices)
+        track_progress_rich(chat_mt, structs, nproc=api_nproc, chunksize=api_nproc, 
+                          save=out_file, keys=indices, save_time=out_time_file)
 
     res = load(out_file)
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
     if index_set is not None:
         res = {k: v for k, v in res.items() if k in index_set}
+        time_res = {k: v for k, v in time_res.items() if k in index_set}
     os.remove(out_file)
-    return res
+    if osp.exists(out_time_file):
+        os.remove(out_time_file)
+    return res, time_res
 
 
 def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, api_nproc=4, use_vllm=False):
@@ -79,6 +89,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     res = {}
     if osp.exists(out_file):
         res.update(load(out_file))
+    
+    out_time_file = out_file.replace('.pkl', '_TIME.pkl')
+    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
 
     rank, world_size = get_rank_and_world_size()
     sheet_indices = list(range(rank, len(dataset), world_size))
@@ -95,6 +108,8 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     if all_finished:
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
+        time_dict_filtered = {k: time_res.get(k, 0.0) for k in data_indices}
+        dump(time_dict_filtered, out_time_file)
         return model
 
     # Data need to be inferred
@@ -122,7 +137,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     is_api = getattr(model, 'is_api', False)
     if is_api:
         lt, indices = len(data), list(data['index'])
-        supp = infer_data_api(
+        supp, supp_time = infer_data_api(
             model=model,
             work_dir=work_dir,
             model_name=model_name,
@@ -132,8 +147,11 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         for idx in indices:
             assert idx in supp
         res.update(supp)
+        time_res.update(supp_time)
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
+        time_dict_filtered = {k: time_res.get(k, 0.0) for k in data_indices}
+        dump(time_dict_filtered, out_time_file)
         return model
     else:
         model.set_dump_image(dataset.dump_image)

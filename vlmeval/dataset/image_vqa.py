@@ -310,7 +310,7 @@ class MathVista(ImageBaseDataset):
     # It returns a DataFrame
     @classmethod
     def evaluate_heuristic(self, eval_file, **judge_kwargs):
-        from .utils.mathvista import MathVista_auxeval, MathVista_acc
+        from .utils.mathvista import MathVista_auxeval, MathVista_acc, post_check
 
         model = judge_kwargs['model']
         storage = get_intermediate_file_path(eval_file, f'_{model}')
@@ -349,6 +349,10 @@ class MathVista(ImageBaseDataset):
 
             data['res'] = [ans[idx]['res'] for idx in data['index']]
             data['log'] = [ans[idx]['log'] for idx in data['index']]
+            
+            # Add correct column to mark whether each question is answered correctly
+            data['correct'] = [post_check(data.iloc[i], prefetch=False) for i in range(len(data))]
+            
             dump(data, storage)
 
         score = MathVista_acc(storage)

@@ -322,6 +322,13 @@ class InternVLChat(BaseModel):
         return message
 
     def set_max_num(self, dataset):
+        # Check if max_num is provided in kwargs (from config file)
+        if 'max_num' in self.kwargs:
+            self.max_num = self.kwargs['max_num']
+            self.total_max_num = 64
+            warnings.warn(f'Using max_num={self.max_num} from config file (overriding dataset default)')
+            return None
+        
         # The total limit on the number of images processed, set to avoid Out-of-Memory issues.
         self.total_max_num = 64
         if dataset is None:
