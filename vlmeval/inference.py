@@ -72,21 +72,39 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
     structs = [s for i, s in zip(indices, structs) if i not in res]
     indices = [i for i in indices if i not in res]
 
-    gen_func = model.generate
+    # 包装 generate 函数以记录时间
+    def gen_func_with_time(**kwargs):
+        start_time = time.time()
+        response = model.generate(**kwargs)
+        end_time = time.time()
+        inference_time = end_time - start_time
+        return {'response': response, 'time': inference_time}
+
     structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, 
-                          save=out_file, keys=indices, save_time=out_time_file)
+        results = track_progress_rich(gen_func_with_time, structs, nproc=api_nproc, chunksize=api_nproc, save=None, keys=None)
+        
+        # 分离响应和时间
+        for idx, result in zip(indices, results):
+            res[idx] = result['response']
+            time_res[idx] = result['time']
+        
+        # 保存结果
+        dump(res, out_file)
+        dump(time_res, out_time_file)
 
     res = load(out_file)
     time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    
     if index_set is not None:
         res = {k: v for k, v in res.items() if k in index_set}
         time_res = {k: v for k, v in time_res.items() if k in index_set}
+    
     os.remove(out_file)
     if osp.exists(out_time_file):
         os.remove(out_time_file)
+    
     return res, time_res
 
 
@@ -163,7 +181,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         time_dict.update(supp_time)
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
-        # API 模型现在也可以记录时间了
+        # 保存 API 模型的推理时间
         time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
         dump(time_dict_filtered, out_time_file)
         return model

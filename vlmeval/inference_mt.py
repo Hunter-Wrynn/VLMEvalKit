@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+import time
 from vlmeval.config import supported_VLM
 from vlmeval.utils import track_progress_rich
 from vlmeval.smp import *
@@ -67,20 +68,39 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
     structs = [s for i, s in zip(indices, structs) if i not in res]
     indices = [i for i in indices if i not in res]
 
+    # 包装 chat_mt 函数以记录时间
+    def chat_mt_with_time(**kwargs):
+        start_time = time.time()
+        response = chat_mt(**kwargs)
+        end_time = time.time()
+        inference_time = end_time - start_time
+        return {'response': response, 'time': inference_time}
+
     structs = [dict(model=model, messages=struct, dataset_name=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(chat_mt, structs, nproc=api_nproc, chunksize=api_nproc, 
-                          save=out_file, keys=indices, save_time=out_time_file)
+        results = track_progress_rich(chat_mt_with_time, structs, nproc=api_nproc, chunksize=api_nproc, save=None, keys=None)
+        
+        # 分离响应和时间
+        for idx, result in zip(indices, results):
+            res[idx] = result['response']
+            time_res[idx] = result['time']
+        
+        # 保存结果
+        dump(res, out_file)
+        dump(time_res, out_time_file)
 
     res = load(out_file)
     time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    
     if index_set is not None:
         res = {k: v for k, v in res.items() if k in index_set}
         time_res = {k: v for k, v in time_res.items() if k in index_set}
+    
     os.remove(out_file)
     if osp.exists(out_time_file):
         os.remove(out_time_file)
+    
     return res, time_res
 
 
@@ -89,9 +109,6 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     res = {}
     if osp.exists(out_file):
         res.update(load(out_file))
-    
-    out_time_file = out_file.replace('.pkl', '_TIME.pkl')
-    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
 
     rank, world_size = get_rank_and_world_size()
     sheet_indices = list(range(rank, len(dataset), world_size))
@@ -108,8 +125,6 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     if all_finished:
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
-        time_dict_filtered = {k: time_res.get(k, 0.0) for k in data_indices}
-        dump(time_dict_filtered, out_time_file)
         return model
 
     # Data need to be inferred
@@ -147,11 +162,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         for idx in indices:
             assert idx in supp
         res.update(supp)
-        time_res.update(supp_time)
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
-        time_dict_filtered = {k: time_res.get(k, 0.0) for k in data_indices}
-        dump(time_dict_filtered, out_time_file)
+        # 注意：多轮对话的时间信息在这里暂时不保存
         return model
     else:
         model.set_dump_image(dataset.dump_image)

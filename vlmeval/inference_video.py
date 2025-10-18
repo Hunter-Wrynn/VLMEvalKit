@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+import time
 from vlmeval.config import supported_VLM
 from vlmeval.utils import track_progress_rich
 from vlmeval.smp import *
@@ -63,6 +64,7 @@ def infer_data_api(model, work_dir, model_name, dataset, samples_dict={}, api_np
     else:
         out_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.fps}fps_{packstr}_supp.pkl'
         out_time_file = f'{work_dir}/{model_name}_{dataset_name}_{dataset.fps}fps_{packstr}_supp_TIME.pkl'
+    
     res = load(out_file) if osp.exists(out_file) else {}
     time_res = load(out_time_file) if osp.exists(out_time_file) else {}
 
@@ -70,23 +72,36 @@ def infer_data_api(model, work_dir, model_name, dataset, samples_dict={}, api_np
     structs = [struct for struct in structs if struct is not None]
     indices = [i for i in indices if i not in res or res[i] == FAIL_MSG]
 
-    gen_func = model.generate
+    # 包装 generate 函数以记录时间
+    def gen_func_with_time(**kwargs):
+        start_time = time.time()
+        response = model.generate(**kwargs)
+        end_time = time.time()
+        inference_time = end_time - start_time
+        return {'response': response, 'time': inference_time}
+
     structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
 
     if len(structs):
-        track_progress_rich(gen_func, structs, nproc=api_nproc, chunksize=api_nproc, 
-                          save=out_file, keys=indices, save_time=out_time_file)
+        results = track_progress_rich(gen_func_with_time, structs, nproc=api_nproc, chunksize=api_nproc, save=None, keys=None)
+        
+        # 分离响应和时间
+        for idx, result in zip(indices, results):
+            res[idx] = result['response']
+            time_res[idx] = result['time']
+        
+        # 保存结果
+        dump(res, out_file)
+        dump(time_res, out_time_file)
 
     res = load(out_file)
     time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    
     return res, time_res
 
 
 def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, api_nproc=4, use_vllm=False):
     res = load(out_file) if osp.exists(out_file) else {}
-    out_time_file = out_file.replace('.pkl', '_TIME.pkl')
-    time_res = load(out_time_file) if osp.exists(out_time_file) else {}
-    
     rank, world_size = get_rank_and_world_size()
     dataset_name = dataset.dataset_name
 
@@ -130,9 +145,8 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         for k in sample_indices_subrem:
             assert k in supp
         res.update(supp)
-        time_res.update(supp_time)
         dump(res, out_file)
-        dump(time_res, out_time_file)
+        # 注意：视频推理的时间信息在这里暂时不保存
         return model
 
     assert not getattr(dataset, 'pack', False), 'Current model not supported pack mode!'

@@ -8,7 +8,7 @@ cd /data/xyc/mhx/rtbench/VLMEvalKit
 # 只运行评估，不进行推理
 # --reuse: 自动重用最新的推理结果文件
 python run.py \
-    --config config/Mathvista/GPT5.json \
+    --config config/Mathvista/internvl35_14b_only_config.json \
     --work-dir ./outputs/MathVista_MINI \
     --mode eval \
     --verbose \

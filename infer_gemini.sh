@@ -9,7 +9,7 @@ cd /data/xyc/mhx/rtbench/VLMEvalKit
 
 # 运行评测
 python run.py \
-    --config config/Mathvista/Gemini2_5Pro.json \
+    --config config/Mathvista/Gemini2_5Flash.json \
     --work-dir ./outputs/MathVista_MINI \
     --mode infer \
     --verbose
