@@ -1,0 +1,16 @@
+{
+    "model": {
+        "Ovis2-4B": {
+            "temperature": 0.0,
+            "do_sample": false,
+            "top_p": 1.0
+        }
+    },
+    "data": {
+        "BLINK": {
+            "class": "ImageMCQDataset",
+            "dataset": "BLINK"
+        }
+    }
+}
+

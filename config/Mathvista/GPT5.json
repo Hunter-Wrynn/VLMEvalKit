@@ -1,0 +1,16 @@
+{
+    "model": {
+        "gpt-5-2025-08-07": {
+            "temperature": 0,
+            "retry": 10
+        }
+    },
+    "data": {
+        "MathVista_MINI": {
+            "class": "MathVista",
+            "dataset": "MathVista_MINI"
+        }
+    }
+}
+
+

@@ -1,0 +1,16 @@
+{
+    "model": {
+        "InternVL3_5-8B": {
+            "temperature": 0.0,
+            "do_sample": false,
+            "top_p": 1.0
+        }
+    },
+    "data": {
+        "MathVista_MINI": {
+            "class": "MathVista",
+            "dataset": "MathVista_MINI"
+        }
+    }
+}
+
