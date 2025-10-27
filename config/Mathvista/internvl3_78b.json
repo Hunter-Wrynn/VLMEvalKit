@@ -1,9 +1,9 @@
 {
     "model": {
-        "gpt-5-2025-08-07": {
-            "temperature": 0,
-            "retry": 10,
-            "max_tokens": 2048
+        "InternVL3-78B": {
+            "temperature": 0.0,
+            "do_sample": false,
+            "top_p": 1.0
         }
     },
     "data": {
@@ -13,5 +13,4 @@
         }
     }
 }
-
 

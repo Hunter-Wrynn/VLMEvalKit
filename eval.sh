@@ -1,15 +1,15 @@
 #!/bin/bash
 # 对已有的 InternVL3.5-1B MathVista 推理结果进行评估
 
-export LMUData="/data/xyc/mhx/rtbench/VLMEvalKit/dataset"
+export LMUData="/data/xyc/mhx/route/VLMEvalKit/dataset"
 
-cd /data/xyc/mhx/rtbench/VLMEvalKit
+
 
 # 只运行评估，不进行推理
 # --reuse: 自动重用最新的推理结果文件
 python run.py \
-    --config config/Mathvista/internvl35_14b_only_config.json \
-    --work-dir ./outputs/MathVista_MINI \
+    --config /data/xyc/mhx/route/VLMEvalKit/config/MathVerse/InternVL3_5-78B.json \
+    --work-dir ./outputs/MathVerse \
     --mode eval \
     --verbose \
     --reuse

@@ -152,8 +152,43 @@ class GeminiWrapper(BaseAPI):
                     contents=messages,
                     config=types.GenerateContentConfig(**config_args)
                 )
-                answer = resp.text
-                return 0, answer, 'Succeeded! '
+                # Print usage metadata if available
+                if self.verbose and hasattr(resp, 'usage_metadata'):
+                    self.logger.info(f'Gemini usage_metadata: {resp.usage_metadata}')
+                
+                # Extract token statistics
+                token_stats = {}
+                if hasattr(resp, 'usage_metadata') and resp.usage_metadata:
+                    metadata = resp.usage_metadata
+                    token_stats['prompt_token_count'] = getattr(metadata, 'prompt_token_count', 0)
+                    token_stats['candidates_token_count'] = getattr(metadata, 'candidates_token_count', 0)
+                    token_stats['total_token_count'] = getattr(metadata, 'total_token_count', 0)
+                    token_stats['thoughts_token_count'] = getattr(metadata, 'thoughts_token_count', 0)
+                    
+                    # Extract text and image token counts from prompt_tokens_details
+                    text_token_count = 0
+                    image_token_count = 0
+                    if hasattr(metadata, 'prompt_tokens_details') and metadata.prompt_tokens_details:
+                        for detail in metadata.prompt_tokens_details:
+                            if hasattr(detail, 'modality') and hasattr(detail, 'token_count'):
+                                if 'TEXT' in str(detail.modality):
+                                    text_token_count += detail.token_count
+                                elif 'IMAGE' in str(detail.modality):
+                                    image_token_count += detail.token_count
+                    
+                    token_stats['text_prompt_token_count'] = text_token_count
+                    token_stats['image_prompt_token_count'] = image_token_count
+                
+                answer = resp.text if resp.text else ''
+                if not answer:
+                    # Check if blocked by safety filters
+                    if hasattr(resp, 'prompt_feedback'):
+                        self.logger.warning(f'Empty response, prompt_feedback: {resp.prompt_feedback}')
+                    if hasattr(resp, 'candidates') and resp.candidates:
+                        self.logger.warning(f'Candidate finish_reason: {resp.candidates[0].finish_reason}')
+                
+                # Return token stats along with the response
+                return 0, answer, 'Succeeded! ', token_stats
             except Exception as err:
                 if self.verbose:
                     self.logger.error(f'{type(err)}: {err}')
@@ -170,13 +205,37 @@ class GeminiWrapper(BaseAPI):
             try:
                 resp = model.generate_content(messages)
                 answer = resp.text
-                return 0, answer, 'Succeeded! '
+                
+                # Extract token statistics for vertex backend
+                token_stats = {}
+                if hasattr(resp, 'usage_metadata') and resp.usage_metadata:
+                    metadata = resp.usage_metadata
+                    token_stats['prompt_token_count'] = getattr(metadata, 'prompt_token_count', 0)
+                    token_stats['candidates_token_count'] = getattr(metadata, 'candidates_token_count', 0)
+                    token_stats['total_token_count'] = getattr(metadata, 'total_token_count', 0)
+                    token_stats['thoughts_token_count'] = getattr(metadata, 'thoughts_token_count', 0)
+                    
+                    # Extract text and image token counts from prompt_tokens_details
+                    text_token_count = 0
+                    image_token_count = 0
+                    if hasattr(metadata, 'prompt_tokens_details') and metadata.prompt_tokens_details:
+                        for detail in metadata.prompt_tokens_details:
+                            if hasattr(detail, 'modality') and hasattr(detail, 'token_count'):
+                                if 'TEXT' in str(detail.modality):
+                                    text_token_count += detail.token_count
+                                elif 'IMAGE' in str(detail.modality):
+                                    image_token_count += detail.token_count
+                    
+                    token_stats['text_prompt_token_count'] = text_token_count
+                    token_stats['image_prompt_token_count'] = image_token_count
+                
+                return 0, answer, 'Succeeded! ', token_stats
             except Exception as err:
                 if self.verbose:
                     self.logger.error(f'{type(err)}: {err}')
                     self.logger.error(f'The input messages are {inputs}.')
 
-                return -1, '', ''
+                return -1, '', '', {}
 
 
 class Gemini(GeminiWrapper):

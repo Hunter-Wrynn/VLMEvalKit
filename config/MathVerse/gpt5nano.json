@@ -1,17 +1,15 @@
 {
     "model": {
-        "gpt-5-2025-08-07": {
+        "gpt-5-nano": {
             "temperature": 0,
             "retry": 10,
             "max_tokens": 2048
         }
     },
     "data": {
-        "MathVista_MINI": {
-            "class": "MathVista",
-            "dataset": "MathVista_MINI"
+        "MathVerse_MINI_Vision_Only": {
+            "class": "MathVerse",
+            "dataset": "MathVerse_MINI_Vision_Only"
         }
     }
 }
-
-

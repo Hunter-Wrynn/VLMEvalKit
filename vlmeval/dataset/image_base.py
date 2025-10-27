@@ -37,7 +37,7 @@ class ImageBaseDataset:
     DATASET_URL = {}
     DATASET_MD5 = {}
 
-    def __init__(self, dataset='MMBench', skip_noimg=True):
+    def __init__(self, dataset='MMBench', skip_noimg=True, limit=None):
         ROOT = LMUDataRoot()
         # You can override this variable to save image files to a different directory
         self.dataset_name = dataset
@@ -47,6 +47,10 @@ class ImageBaseDataset:
         self.skip_noimg = skip_noimg
         if skip_noimg and 'image' in data:
             data = data[~pd.isna(data['image'])]
+
+        # Apply limit if specified
+        if limit is not None and limit > 0:
+            data = data.head(limit)
 
         data['index'] = [str(x) for x in data['index']]
 

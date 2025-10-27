@@ -210,7 +210,7 @@ class BaseAPI:
             if self.system_prompt is None:
                 self.system_prompt = system_prompt
             else:
-                if system_prompt not in self.system_prompt:
+                if self.system_prompt and system_prompt not in self.system_prompt:
                     self.system_prompt += '\n' + system_prompt
         return new_message
 
@@ -241,12 +241,23 @@ class BaseAPI:
         T = rd.random() * 0.5
         time.sleep(T)
 
+        token_stats = {}
         for i in range(self.retry):
             try:
-                ret_code, answer, log = self.generate_inner(message, **kwargs)
-                if ret_code == 0 and self.fail_msg not in answer and answer != '':
+                result = self.generate_inner(message, **kwargs)
+                if len(result) == 3:
+                    ret_code, answer, log = result
+                    token_stats = {}
+                elif len(result) == 4:
+                    ret_code, answer, log, token_stats = result
+                else:
+                    raise ValueError(f"Unexpected return value from generate_inner: {result}")
+                
+                if ret_code == 0 and answer and self.fail_msg not in answer and answer != '':
                     if self.verbose:
                         print(answer)
+                    # Store token stats as instance variable for later access
+                    self.last_token_stats = token_stats
                     return answer
                 elif self.verbose:
                     if not isinstance(log, str):

@@ -302,12 +302,17 @@ api_models = {
         Gemini, model="gemini-2.0-flash-lite", temperature=0, retry=10
     ),
     "GeminiFlash2-5": partial(
-        Gemini, model="gemini-2.5-flash", temperature=0, retry=10
+        Gemini, model="gemini-2.5-flash", temperature=0, retry=10, max_tokens=2048
+    ),
+    "GeminiFlash2-5-thinking": partial(
+        Gemini, model="gemini-2.5-flash", temperature=0, retry=10, max_tokens=2048
     ),
     "GeminiPro2-5": partial(
-        Gemini, model="gemini-2.5-pro", temperature=0, retry=10
+        Gemini, model="gemini-2.5-pro", temperature=0, retry=10, max_tokens=2048
     ),
-    
+     "GeminiPro2-5-tk": partial(
+        Gemini, model="gemini-2.5-pro", temperature=0, retry=10, max_tokens=2048
+    ),   
     # Qwen-VL
     "QwenVLPlus": partial(QwenVLAPI, model="qwen-vl-plus", temperature=0, retry=10),
     "QwenVLMax": partial(QwenVLAPI, model="qwen-vl-max", temperature=0, retry=10),
@@ -964,7 +969,7 @@ internvl3 = {
         InternVLChat, model_path="OpenGVLab/InternVL3-38B", version="V2.0"
     ),
     "InternVL3-78B": partial(
-        InternVLChat, model_path="OpenGVLab/InternVL3-78B", version="V2.0"
+        InternVLChat, model_path="/data/xyc/cache/hub/InternVL3-78B", version="V2.0"
     ),
 }
 
@@ -1146,7 +1151,7 @@ cogvlm_series = {
         CogVlm, model_path="THUDM/cogvlm2-llama3-chat-19B"
     ),
     "glm-4v-9b": partial(GLM4v, model_path="THUDM/glm-4v-9b"),
-    "GLM4_1VThinking-9b": partial(GLMThinking, model_path="zai-org/GLM-4.1V-9B-Thinking"),
+    "GLM4_1VThinking-9b": partial(GLMThinking, model_path="/data/xyc/cache/hub/GLM-4.1V-9B-Thinking"),
     "GLM4_5V": partial(GLMThinking, model_path="THUDM/GLM-4.5V"),
 }
 

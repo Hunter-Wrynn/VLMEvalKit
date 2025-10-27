@@ -1,6 +1,6 @@
 {
     "model": {
-        "gpt-5-2025-08-07": {
+        "gpt-5-nano": {
             "temperature": 0,
             "retry": 10,
             "max_tokens": 2048
@@ -13,5 +13,3 @@
         }
     }
 }
-
-

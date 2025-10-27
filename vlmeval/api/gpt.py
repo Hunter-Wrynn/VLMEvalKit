@@ -234,15 +234,75 @@ class OpenAIWrapper(BaseAPI):
         ret_code = response.status_code
         ret_code = 0 if (200 <= int(ret_code) < 300) else ret_code
         answer = self.fail_msg
+        usage_info = {}
         try:
             resp_struct = json.loads(response.text)
             answer = resp_struct['choices'][0]['message']['content'].strip()
+            
+            # 提取usage信息
+            if 'usage' in resp_struct:
+                usage_info = resp_struct['usage']
+                if self.verbose:
+                    self.logger.info(f'OpenAI usage info: {usage_info}')
+                    # 详细打印token统计信息
+                    self.print_token_stats(usage_info)
+                
+                # 提取简化的token统计信息
+                simplified_tokens = self.extract_simplified_tokens(usage_info)
+                usage_info = simplified_tokens
+            
         except Exception as err:
             if self.verbose:
                 self.logger.error(f'{type(err)}: {err}')
                 self.logger.error(response.text if hasattr(response, 'text') else response)
 
-        return ret_code, answer, response
+        return ret_code, answer, response, usage_info
+
+    def print_token_stats(self, usage_info):
+        """打印详细的token统计信息"""
+        print("\n" + "="*60)
+        print(f"🔢 GPT-5 Token使用统计 ({self.model})")
+        print("="*60)
+        
+        # 基本token统计
+        print(f"📝 输入Token数量: {usage_info.get('prompt_tokens', 0)}")
+        print(f"📤 输出Token数量: {usage_info.get('completion_tokens', 0)}")
+        print(f"📊 总Token数量: {usage_info.get('total_tokens', 0)}")
+        
+        # 输入token详情
+        if 'prompt_tokens_details' in usage_info:
+            prompt_details = usage_info['prompt_tokens_details']
+            print(f"\n📥 输入Token详情:")
+            print(f"  • 缓存Token: {prompt_details.get('cached_tokens', 0)}")
+            print(f"  • 音频Token: {prompt_details.get('audio_tokens', 0)}")
+        
+        # 输出token详情
+        if 'completion_tokens_details' in usage_info:
+            completion_details = usage_info['completion_tokens_details']
+            print(f"\n📤 输出Token详情:")
+            print(f"  • 推理Token: {completion_details.get('reasoning_tokens', 0)}")
+            print(f"  • 音频Token: {completion_details.get('audio_tokens', 0)}")
+            print(f"  • 接受预测Token: {completion_details.get('accepted_prediction_tokens', 0)}")
+            print(f"  • 拒绝预测Token: {completion_details.get('rejected_prediction_tokens', 0)}")
+        
+        print("="*60)
+
+    def extract_simplified_tokens(self, usage_info):
+        """提取简化的token统计信息，只包含输入和输出token"""
+        simplified = {
+            'prompt_token_count': usage_info.get('prompt_tokens', 0),
+            'completion_token_count': usage_info.get('completion_tokens', 0),
+            'total_token_count': usage_info.get('total_tokens', 0)
+        }
+        
+        # 提取推理token数量（如果存在）
+        if 'completion_tokens_details' in usage_info:
+            completion_details = usage_info['completion_tokens_details']
+            simplified['reasoning_token_count'] = completion_details.get('reasoning_tokens', 0)
+        else:
+            simplified['reasoning_token_count'] = 0
+            
+        return simplified
 
     def get_image_token_len(self, img_path, detail='low'):
         import math

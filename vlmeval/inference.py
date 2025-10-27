@@ -62,67 +62,92 @@ def infer_data_api(model, work_dir, model_name, dataset, index_set=None, api_npr
 
     res = {}
     time_res = {}
+    token_stats_res = {}
     if osp.exists(out_file):
         res = load(out_file)
         if ignore_failed:
             res = {k: v for k, v in res.items() if FAIL_MSG not in v}
     if osp.exists(out_time_file):
         time_res = load(out_time_file)
+    
+    # 加载token统计文件
+    out_token_file = f'{work_dir}/{model_name}_{dataset_name}_supp_TOKEN.pkl'
+    if osp.exists(out_token_file):
+        token_stats_res = load(out_token_file)
 
     structs = [s for i, s in zip(indices, structs) if i not in res]
     indices = [i for i in indices if i not in res]
 
-    # 包装 generate 函数以记录时间
+    # 包装 generate 函数以记录时间和token统计
     def gen_func_with_time(**kwargs):
         start_time = time.time()
         response = model.generate(**kwargs)
         end_time = time.time()
         inference_time = end_time - start_time
-        return {'response': response, 'time': inference_time}
+        
+        # 获取token统计信息
+        token_stats = getattr(model, 'last_token_stats', {})
+        
+        return {
+            'response': response, 
+            'time': inference_time,
+            'token_stats': token_stats
+        }
 
     structs = [dict(message=struct, dataset=dataset_name) for struct in structs]
 
     if len(structs):
         results = track_progress_rich(gen_func_with_time, structs, nproc=api_nproc, chunksize=api_nproc, save=None, keys=None)
         
-        # 分离响应和时间
+        # 分离响应、时间和token统计
         for idx, result in zip(indices, results):
             res[idx] = result['response']
             time_res[idx] = result['time']
+            token_stats_res[idx] = result['token_stats']
         
         # 保存结果
         dump(res, out_file)
         dump(time_res, out_time_file)
+        dump(token_stats_res, out_token_file)
 
     res = load(out_file)
     time_res = load(out_time_file) if osp.exists(out_time_file) else {}
+    token_stats_res = load(out_token_file) if osp.exists(out_token_file) else {}
     
     if index_set is not None:
         res = {k: v for k, v in res.items() if k in index_set}
         time_res = {k: v for k, v in time_res.items() if k in index_set}
+        token_stats_res = {k: v for k, v in token_stats_res.items() if k in index_set}
     
     os.remove(out_file)
     if osp.exists(out_time_file):
         os.remove(out_time_file)
+    if osp.exists(out_token_file):
+        os.remove(out_token_file)
     
-    return res, time_res
+    return res, time_res, token_stats_res
 
 
 def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, api_nproc=4, use_vllm=False):
     dataset_name = dataset.dataset_name
     prev_file = f'{work_dir}/{model_name}_{dataset_name}_PREV.pkl'
     prev_time_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TIME.pkl'
+    prev_token_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TOKEN.pkl'
     
     res = load(prev_file) if osp.exists(prev_file) else {}
     time_dict = load(prev_time_file) if osp.exists(prev_time_file) else {}
+    token_dict = load(prev_token_file) if osp.exists(prev_token_file) else {}
     
     if osp.exists(out_file):
         res.update(load(out_file))
     
-    # 加载对应的时间文件
+    # 加载对应的时间文件和token统计文件
     out_time_file = out_file.replace('.pkl', '_TIME.pkl')
+    out_token_file = out_file.replace('.pkl', '_TOKEN.pkl')
     if osp.exists(out_time_file):
         time_dict.update(load(out_time_file))
+    if osp.exists(out_token_file):
+        token_dict.update(load(out_token_file))
 
     rank, world_size = get_rank_and_world_size()
     sheet_indices = list(range(rank, len(dataset), world_size))
@@ -168,7 +193,7 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
     is_api = getattr(model, 'is_api', False)
     if is_api:
         lt, indices = len(data), list(data['index'])
-        supp, supp_time = infer_data_api(
+        supp, supp_time, supp_token = infer_data_api(
             model=model,
             work_dir=work_dir,
             model_name=model_name,
@@ -179,11 +204,14 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
             assert idx in supp
         res.update(supp)
         time_dict.update(supp_time)
+        token_dict.update(supp_token)
         res = {k: res[k] for k in data_indices}
         dump(res, out_file)
-        # 保存 API 模型的推理时间
+        # 保存 API 模型的推理时间和token统计
         time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
+        token_dict_filtered = {k: token_dict.get(k, {}) for k in data_indices}
         dump(time_dict_filtered, out_time_file)
+        dump(token_dict_filtered, out_token_file)
         return model
     else:
         model.set_dump_image(dataset.dump_image)
@@ -217,6 +245,9 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
         end_time = time.time()
         inference_time = end_time - start_time
         
+        # 获取token统计信息
+        token_stats = getattr(model, 'last_token_stats', {})
+        
         torch.cuda.empty_cache()
 
         if verbose:
@@ -224,15 +255,19 @@ def infer_data(model, model_name, work_dir, dataset, out_file, verbose=False, ap
 
         res[idx] = response
         time_dict[idx] = inference_time
+        token_dict[idx] = token_stats
         
         if (i + 1) % 10 == 0:
             dump(res, out_file)
             dump(time_dict, out_time_file)
+            dump(token_dict, out_token_file)
 
     res = {k: res[k] for k in data_indices}
     time_dict_filtered = {k: time_dict.get(k, 0.0) for k in data_indices}
+    token_dict_filtered = {k: token_dict.get(k, {}) for k in data_indices}
     dump(res, out_file)
     dump(time_dict_filtered, out_time_file)
+    dump(token_dict_filtered, out_token_file)
     return model
 
 
@@ -247,6 +282,7 @@ def infer_data_job(
 
     prev_file = f'{work_dir}/{model_name}_{dataset_name}_PREV.pkl'
     prev_time_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TIME.pkl'
+    prev_token_file = f'{work_dir}/{model_name}_{dataset_name}_PREV_TOKEN.pkl'
     
     if osp.exists(result_file):
         if rank == 0:
@@ -261,6 +297,11 @@ def infer_data_job(
             if 'inference_time' in data:
                 time_results = {k: v for k, v in zip(data['index'], data['inference_time'])}
                 dump(time_results, prev_time_file)
+            
+            # 如果结果文件中有token统计信息，也保存到 PREV_TOKEN
+            if 'token_stats' in data:
+                token_results = {k: v for k, v in zip(data['index'], data['token_stats'])}
+                dump(token_results, prev_token_file)
         if world_size > 1:
             dist.barrier()
 
@@ -276,6 +317,7 @@ def infer_data_job(
     if rank == 0:
         data_all = {}
         time_all = {}
+        token_all = {}
         
         # 合并所有进程的预测结果
         for i in range(world_size):
@@ -287,6 +329,13 @@ def infer_data_job(
             time_file = time_tmpl.format(i)
             if osp.exists(time_file):
                 time_all.update(load(time_file))
+        
+        # 合并所有进程的token统计数据
+        token_tmpl = tmpl.replace('.pkl', '_TOKEN.pkl')
+        for i in range(world_size):
+            token_file = token_tmpl.format(i)
+            if osp.exists(token_file):
+                token_all.update(load(token_file))
 
         data = dataset.data
         for x in data['index']:
@@ -319,6 +368,16 @@ def infer_data_job(
         # 添加推理时间列
         data['inference_time'] = [time_all.get(x, 0.0) for x in data['index']]
         
+        # 添加token统计列
+        data['prompt_token_count'] = [token_all.get(x, {}).get('prompt_token_count', 0) for x in data['index']]
+        data['candidates_token_count'] = [token_all.get(x, {}).get('candidates_token_count', 0) for x in data['index']]
+        data['completion_token_count'] = [token_all.get(x, {}).get('completion_token_count', 0) for x in data['index']]
+        data['total_token_count'] = [token_all.get(x, {}).get('total_token_count', 0) for x in data['index']]
+        data['text_prompt_token_count'] = [token_all.get(x, {}).get('text_prompt_token_count', 0) for x in data['index']]
+        data['image_prompt_token_count'] = [token_all.get(x, {}).get('image_prompt_token_count', 0) for x in data['index']]
+        data['thoughts_token_count'] = [token_all.get(x, {}).get('thoughts_token_count', 0) for x in data['index']]
+        data['reasoning_token_count'] = [token_all.get(x, {}).get('reasoning_token_count', 0) for x in data['index']]
+        
         if 'image' in data:
             data.pop('image')
 
@@ -330,6 +389,9 @@ def infer_data_job(
             time_file = time_tmpl.format(i)
             if osp.exists(time_file):
                 os.remove(time_file)
+            token_file = token_tmpl.format(i)
+            if osp.exists(token_file):
+                os.remove(token_file)
     if world_size > 1:
         dist.barrier()
     return model
